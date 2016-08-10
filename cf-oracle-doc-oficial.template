@@ -1,0 +1,1587 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "This is a Template for you to install enterprise class Oracle Database and Grid Infrastructure 12c in an existing VPC environment. You must have the rights to Oracle Enterprise licensing and download the required Software by your self and put them in one of yours S3 buckets. This templates uses Oracle RedHat Linux. The following Oracle donwloads must be available in your bucket at the launch time : linuxamd64_12102_database_1of2.zip, linuxamd64_12102_database_2of2.zip, linuxamd64_12102_grid_1of2.zip and linuxamd64_12102_grid_2of2.zip ",
+
+  "Parameters" : {
+
+
+    "KeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+
+    "BucketName": {
+      "Description" : "Name of your bucket with your Oracle Binaries.",
+      "Type": "String",
+      "ConstraintDescription" : "Enter your bucket name, must be an existing bucket with your files downloaded."
+    },
+    "DatabaseName": {
+      "Description" : "Enter your Database Name, Min 3, Maximum of 8 characters. Primary instance will have the same name of this.",
+      "Type": "String",
+      "Default" : "orcl",
+      "AllowedPattern": "([A-Za-z0-9-]{3,8})",
+      "ConstraintDescription" : "No special chars, Min 3, Maximum of 8 characters."
+    },
+    "StandbyName": {
+      "Description" : "Enter your Standby EC2 Instance Name, Min 3, Maximum of 8 characters",
+      "Type": "String",
+      "Default" : "orclsb",
+      "AllowedPattern": "([A-Za-z0-9-]{3,8})",
+      "ConstraintDescription" : "No special chars, Min 3, Maximum of 8 characters."
+    },
+    "DatabasePass": {
+      "NoEcho" : "true",
+      "Description" : "Enter your Database Password, Min 3, maximum of 8 characters",
+      "Type": "String",
+      "AllowedPattern": "([A-Za-z0-9_!@#$%ˆ&*-]{3,8})",
+      "ConstraintDescription" : "Input your database Password, Min 3, Maximum of 8 characters."
+    },
+    "AsmPass": {
+      "NoEcho" : "true",
+      "Description" : "Enter your ASM Password, Min 3, maximum of 8 characters",
+      "Type": "String",
+      "AllowedPattern": "([A-Za-z0-9_!@#$%ˆ&*-]{3,8})",
+      "ConstraintDescription" : "Input your ASM Password, Min 3, Maximum of 8 characters."
+    },
+    "CharacterSet" : {
+      "Description" : "Choose your Oracle Enterprise CharacterSet.",
+      "Type" : "String",
+      "Default" : "AL32UTF8",
+      "AllowedValues" : [ "AL32UTF8",	"AR8ISO8859P6",	"AR8MSWIN1256",	"BLT8ISO8859P13",	"BLT8MSWIN1257",	"CL8ISO8859P5",	"CL8MSWIN1251",	"EE8ISO8859P2",	"EE8MSWIN1250",	"EL8ISO8859P7",	"EL8MSWIN1253",	"IW8ISO8859P8",	"IW8MSWIN1255",	"JA16EUC",	"JA16EUCTILDE",	"JA16SJIS",	"JA16SJISTILDE",	"KO16MSWIN949",	"NE8ISO8859P10",	"NEE8ISO8859P4",	"TH8TISASCII",	"TR8MSWIN1254",	"VN8MSWIN1258",	"WE8ISO8859P15",	"WE8ISO8859P9",	"WE8MSWIN1252",	"ZHS16GBK",	"ZHT16HKSCS",	"ZHT16MSWIN950",	"ZHT32EUC"],
+      "ConstraintDescription" : "Default is AL32UTF8, Unicode 6.2 UTF-8 Universal character set."
+    },
+    "InstanceType" : {
+      "Description" : "Choose your Oracle Enterprise instance type.",
+      "Type" : "String",
+      "Default" : "t2.large",
+      "AllowedValues" : [ "t2.medium", "t2.large", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "m4.large", "m4.xlarge", "m4.2xlarge", "m4.4xlarge", "m4.10xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "c4.large", "c4.xlarge", "c4.2xlarge", "c4.4xlarge", "c4.8xlarge", "r3.large", "r3.xlarge", "r3.2xlarge", "r3.4xlarge", "r3.8xlarge", "i2.xlarge", "i2.2xlarge", "i2.4xlarge", "i2.8xlarge", "d2.xlarge", "d2.2xlarge", "d2.4xlarge", "d2.8xlarge", "hi1.4xlarge", "hs1.8xlarge", "cr1.8xlarge", "cc2.8xlarge", "cg1.4xlarge"],
+      "ConstraintDescription" : "Must be a valid EC2 instance type. Default is t2.large"
+    },
+
+    "VpcId" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "VpcId of your existing Virtual Private Cloud (VPC)",
+      "ConstraintDescription" : "must be the VPC Id of an existing Virtual Private Cloud."
+    },
+
+    "SubnetId" : {
+      "Type" : "AWS::EC2::Subnet::Id",
+      "Description" : "SubnetId of an existing subnet (for the primary network) in your Virtual Private Cloud (VPC) - Primary Database",
+      "ConstraintDescription" : "must be an existing subnet in the selected Virtual Private Cloud."
+    },
+    "StandbySubnetId" : {
+      "Type" : "AWS::EC2::Subnet::Id",
+      "Description" : "SubnetId of an existing subnet (for the Standby network) in your Virtual Private Cloud (VPC) - Standby Database",
+      "ConstraintDescription" : "must be an existing subnet in the selected Virtual Private Cloud."
+    },
+
+    "EbsData" : {
+      "Type" : "Number",
+      "Default" : "5",
+      "Description" : "Enter the number of Gigabytes for Each ASM Disk (EBS) for DATA Diskgroup total of 6 (six) volumes",
+      "ConstraintDescription": "must be a valid Number"
+    },
+    "EbsReco" : {
+      "Type" : "Number",
+      "Default" : "2",
+      "Description" : "Enter the number of Gigabytes for Each ASM Disk (EBS) for RECO Diskgroup total of 3 (three)  volumes",
+      "ConstraintDescription": "must be a valid Number"
+    },
+
+    "PrimaryIPAddress" : {
+      "Type" : "String",
+      "Description" : "Primary private IP. This must be a valid IP address for Subnet - Primary Database",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})",
+      "ConstraintDescription": "must be a valid IP address of the form x.x.x.x."
+    },
+
+    "STANDBYIPAddress" : {
+      "Type" : "String",
+      "Description" : "Stanby private IP. This ust be a valid IP address for Subnet - STANDBY Database",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})",
+      "ConstraintDescription": "must be a valid IP address of the form x.x.x.x."
+    },
+
+    "SSHLocation" : {
+      "Description" : "The IP address range CIDR that can will be allowed to SSH and connect to DB in the EC2 instances",
+      "Type": "String",
+      "MinLength": "9",
+      "MaxLength": "18",
+      "Default": "0.0.0.0/0",
+      "AllowedPattern": "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+      "ConstraintDescription": "must be a valid IP CIDR range of the form x.x.x.x/x."
+    }
+  },
+
+  "Metadata":{
+  "AWS::CloudFormation::Interface" : {
+     "ParameterGroups" : [
+       {
+         "Label" : { "default" : "Network Configuration" },
+         "Parameters" : [ "VpcId", "SubnetId","PrimaryIPAddress","StandbySubnetId","STANDBYIPAddress", "SSHLocation" ]
+       },
+       {
+         "Label" : { "default" : "Database Configuration" },
+         "Parameters" : [ "DatabaseName","CharacterSet","StandbyName", "DatabasePass", "AsmPass","EbsData","EbsReco","BucketName" ]
+       },
+       {
+         "Label" : { "default":"Amazon EC2 Configuration" },
+         "Parameters" : [ "InstanceType", "KeyName" ]
+       }
+     ],
+     "ParameterLabels" : {
+       "VpcId" : { "default" : "Which VPC should this database be deployed to?" },
+       "SubnetId" : { "default" : "Choose a Primary Subnet, make sure it's from chosen VPC" },
+       "StandbySubnetId" : { "default" : "Choose a Standby Subnet in your VPC different from Primary" },
+       "SSHLocation" : { "default" : "Setup a CIDR, make sure both Primary and Standby Subnets are included." },
+       "StandbyName" : { "default" : "Standby EC2 instance Name." },
+       "DatabaseName" : { "default" : "Enter Database Name, service name will be the same." },
+       "EbsData" : { "default" : "Your Data Diskgroup = 6 x this size, example: 20, makes a diskgroup of 120G" },
+       "EbsReco" : { "default" : "Your Recovery (Reco) Diskgroup  = 3 x this size, example: 2, makes a diskgroup of 6G" },
+       "DatabasePass" : { "default" : "Your database Password, it will be applied to all adm users (SYS, SYSTEM,)" },
+       "InstanceType" : { "default" : "Choose an instance Type between the values in the box?" }
+     }
+   }
+ },
+
+
+
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+    "t2.medium"   : { "Arch" : "HVM64" , "shmax" : "3221225472"  ,"sga" : "3072","shmall" : "838861" } ,
+      "t2.large"    : { "Arch" : "HVM64"  , "shmax" : "6442450944"  ,"sga" : "6144","shmall" : "1677722" } ,
+      "m3.medium"   : { "Arch" : "HVM64"  , "shmax" : "3019898880"  ,"sga" : "2880","shmall" : "786432" } ,
+      "m3.large"    : { "Arch" : "HVM64"  , "shmax" : "6039797760"  ,"sga" : "5760","shmall" : "1572864" } ,
+      "m3.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "12079595520"  ,"sga" : "11520","shmall" : "3145728" } ,
+      "m3.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "24159191040"  ,"sga" : "23040","shmall" : "6291456" } ,
+      "m4.large"    : { "Arch" : "HVM64"  , "shmax" : "6442450944"  ,"sga" : "6144","shmall" : "1677722" } ,
+      "m4.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "12884901888"  ,"sga" : "12288","shmall" : "3355444" } ,
+      "m4.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "25769803776"  ,"sga" : "24576","shmall" : "6710887" } ,
+      "m4.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "51539607552"  ,"sga" : "49152","shmall" : "13421773" } ,
+      "m4.10xlarge" : { "Arch" : "HVM64"  , "shmax" : "128849018880"  ,"sga" : "122880","shmall" : "33554432" } ,
+      "c3.large"    : { "Arch" : "HVM64"  , "shmax" : "3019898880"  ,"sga" : "2880","shmall" : "786432" } ,
+      "c3.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "6039797760"  ,"sga" : "5760","shmall" : "1572864" } ,
+      "c3.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "12079595520"  ,"sga" : "11520","shmall" : "3145728" } ,
+      "c3.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "24159191040"  ,"sga" : "23040","shmall" : "6291456" } ,
+      "c3.8xlarge"  : { "Arch" : "HVM64"  , "shmax" : "48318382080"  ,"sga" : "46080","shmall" : "12582912" } ,
+      "c4.large"    : { "Arch" : "HVM64"  , "shmax" : "3019898880"  ,"sga" : "2880","shmall" : "786432" } ,
+      "c4.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "6039797760"  ,"sga" : "5760","shmall" : "1572864" } ,
+      "c4.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "12079595520"  ,"sga" : "11520","shmall" : "3145728" } ,
+      "c4.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "24159191040"  ,"sga" : "23040","shmall" : "6291456" } ,
+      "c4.8xlarge"  : { "Arch" : "HVM64"  , "shmax" : "48318382080"  ,"sga" : "46080","shmall" : "12582912" } ,
+      "r3.large"    : { "Arch" : "HVM64"  , "shmax" : "12280922112"  ,"sga" : "11712","shmall" : "3198157" } ,
+      "r3.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "24561844224"  ,"sga" : "23424","shmall" : "6396314" } ,
+      "r3.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "49123688448"  ,"sga" : "46848","shmall" : "12792628" } ,
+      "r3.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "98247376896"  ,"sga" : "93696","shmall" : "25585255" } ,
+      "r3.8xlarge"  : { "Arch" : "HVM64"  , "shmax" : "196494753792"  ,"sga" : "187392","shmall" : "51170509" } ,
+      "i2.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "24561844224"  ,"sga" : "23424","shmall" : "6396314" } ,
+      "i2.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "49123688448"  ,"sga" : "46848","shmall" : "12792628" } ,
+      "i2.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "98247376896"  ,"sga" : "93696","shmall" : "25585255" } ,
+      "i2.8xlarge"  : { "Arch" : "HVM64"  , "shmax" : "196494753792"  ,"sga" : "187392","shmall" : "51170509" } ,
+      "d2.xlarge"   : { "Arch" : "HVM64"  , "shmax" : "24561844224"  ,"sga" : "23424","shmall" : "6396314" } ,
+      "d2.2xlarge"  : { "Arch" : "HVM64"  , "shmax" : "49123688448"  ,"sga" : "46848","shmall" : "12792628" } ,
+      "d2.4xlarge"  : { "Arch" : "HVM64"  , "shmax" : "98247376896"  ,"sga" : "93696","shmall" : "25585255" } ,
+      "d2.8xlarge"  : { "Arch" : "HVM64"  , "shmax" : "196494753792"  ,"sga" : "187392","shmall" : "51170509" } ,
+      "hi1.4xlarge" : { "Arch" : "HVM64"  , "shmax" : "48721035264"  ,"sga" : "46464","shmall" : "12687770" } ,
+      "hs1.8xlarge" : { "Arch" : "HVM64"  , "shmax" : "94220845056"  ,"sga" : "89856","shmall" : "24536679" } ,
+      "cr1.8xlarge" : { "Arch" : "HVM64"  , "shmax" : "196494753792"  ,"sga" : "187392","shmall" : "51170509" } ,
+      "cc2.8xlarge" : { "Arch" : "HVM64" , "shmax" : "48721035264"  ,"sga" : "46464","shmall" : "12687770" }
+    },
+    "AWSRegionArch2AMI" : {
+      "us-east-1"        : {"HVM64" : "ami-2051294a"},
+      "us-west-2"        : {"HVM64" : "ami-775e4f16"},
+      "us-west-1"        : {"HVM64" : "ami-d1315fb1"},
+      "eu-west-1"        : {"HVM64" : "ami-8b8c57f8"},
+      "eu-central-1"     : {"HVM64" : "ami-875042eb"},
+      "ap-northeast-1"   : {"HVM64" : "ami-0dd8f963"},
+      "ap-northeast-2"   : {"HVM64" : "ami-44db152a"},
+      "ap-southeast-1"   : {"HVM64" : "ami-3f03c55c"},
+      "ap-southeast-2"   : {"HVM64" : "ami-e0c19f83"},
+      "sa-east-1"        : {"HVM64" : "ami-27b3094b"}
+    }
+
+  },
+
+  "Resources" : {
+
+    "Route53PrivateZone":{
+      "Type":"AWS::Route53::HostedZone",
+      "Properties":{"HostedZoneConfig":{"Comment":"Hosted Zone for my Template"},
+          "Name":{"Fn::Join":["",[{"Ref":"AWS::StackName"},"."]]},
+          "VPCs":[{"VPCId":{"Ref":"VpcId"},
+            "VPCRegion":{ "Ref" : "AWS::Region" }}]}},
+    "Route53ChangeRecord":{
+            "Type":"AWS::Route53::RecordSet",
+              "DependsOn":"Route53PrivateZone",
+              "Properties":{"HostedZoneName":{"Fn::Join":["",[{"Ref":"AWS::StackName"},"."]]},
+              "Name":{"Fn::Join":["",[{ "Ref": "DatabaseName" },".",{"Ref":"AWS::StackName"},"."]]},
+              "Type":"A",
+              "ResourceRecords":[{"Ref":"PrimaryIPAddress"}],
+              "TTL":"60"}
+            },
+
+      "InstanceRoleOrcl":{
+         "Type":"AWS::IAM::Role",
+         "Properties":{
+            "AssumeRolePolicyDocument":{
+               "Statement":[
+                  {
+                     "Effect":"Allow",
+                     "Principal":{
+                        "Service":[
+                           "ec2.amazonaws.com"
+                        ]
+                     },
+                     "Action":[
+                        "sts:AssumeRole"
+                     ]
+                  }
+               ]
+            },
+            "Path":"/"
+         }
+      },
+      "RolePoliciesOrcl":{
+         "Type":"AWS::IAM::Policy",
+         "Properties":{
+            "PolicyName":"S3Download",
+            "PolicyDocument":{
+               "Statement":[
+                  {
+                     "Action":[
+                       "s3:PutObject",
+                       "s3:GetObject",
+                       "s3:DeleteObject"
+                     ],
+                     "Effect":"Allow",
+                     "Resource":{ "Fn::Join" : ["", ["arn:aws:s3:::",{ "Ref" : "BucketName" },"/*"]]}
+                  }
+               ]
+            },
+            "Roles":[
+               {
+                  "Ref":"InstanceRoleOrcl"
+               }
+            ]
+         }
+      },
+      "InstanceProfileOrcl":{
+         "Type":"AWS::IAM::InstanceProfile",
+         "Properties":{
+            "Path":"/",
+            "Roles":[
+               {
+                  "Ref":"InstanceRoleOrcl"
+               }
+            ]
+         }
+      },
+
+
+
+
+
+
+    "SSHSecurityGroup" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VpcId" },
+        "GroupDescription" : "Enable access via port 22, 5500 and 1521",
+        "SecurityGroupIngress" : [ {"IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : { "Ref" : "SSHLocation"}},
+                                   {"IpProtocol" : "tcp", "FromPort" : "1521", "ToPort" : "1521", "CidrIp" : { "Ref" : "SSHLocation"}},
+                                   {"IpProtocol" : "tcp", "FromPort" : "5500", "ToPort" : "5500", "CidrIp" : { "Ref" : "SSHLocation"}}
+                                  ]
+      }
+    },
+
+
+    "EC2Instance" : {
+      "Type" : "AWS::EC2::Instance",
+      "Metadata":{
+      "AWS::CloudFormation::Init":{
+		     "config" : {
+            		"files" : {
+				"/tmp/orcl-setup.txt" : {
+                		"content" : { "Fn::Join" : ["", [
+                  		"IP ", { "Ref" : "PrimaryIPAddress" }, " \n",
+                                "IP2 ", { "Ref" : "STANDBYIPAddress" }, " \n",
+                                "EBSDataSize ", { "Ref" : "EbsData" }, " \n",
+                                "EBSRecoSize ", { "Ref" : "EbsReco" }, " \n",
+                                "VPC ", { "Ref" : "VpcId" }, " \n",
+                                "SubnetId ", { "Ref" : "SubnetId" }, " \n",
+                                "SecurityGroup ", { "Ref" : "SSHSecurityGroup" }, " \n",
+                                "Bucket ", { "Ref" : "BucketName" }, " \n",
+                  		" \n"
+                  		]]},
+                		"mode"  : "000644",
+                		"owner" : "root",
+                		"group" : "root"
+              			},
+                    "/tmp/listener_prim.ora" : {
+                    "content" : { "Fn::Join" : ["", [
+                    "\n",
+                    "SID_LIST_LISTENER = \n",
+                    " (SID_LIST =  \n",
+                    "   (SID_DESC =  \n",
+                    "     (GLOBAL_DBNAME = ",{ "Ref" : "DatabaseName" }, ")  \n",
+                    "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                    "     (SID_NAME = ",{ "Ref" : "DatabaseName" }, ")   \n",
+                    "   )    \n",
+                    "   (SID_DESC =  \n",
+                    "     (GLOBAL_DBNAME = ",{ "Ref" : "DatabaseName" }, "_DGMGRL)  \n",
+                    "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                    "     (SID_NAME = ",{ "Ref" : "DatabaseName" }, ")   \n",
+                    "   )    \n",
+                    "   (SID_DESC =  \n",
+                    "     (GLOBAL_DBNAME = ",{ "Ref" : "DatabaseName" }, "_DGB)  \n",
+                    "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                    "     (SID_NAME = ",{ "Ref" : "DatabaseName" }, ")   \n",
+                    "   )    \n",
+                    " ) \n",
+                    "  \n",
+                    "  \n"
+                    ]]},
+                    "mode"  : "000666",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+
+
+
+                    "/tmp/dbsetup.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "connect / as sysdba \n",
+                        "set pages 1000 line 150 \n",
+                        "spool /tmp/dbsetup.log \n",
+                        "alter system set db_recovery_file_dest='+RECO' scope=both; \n",
+                        "ALTER DATABASE FORCE LOGGING; \n",
+                        "ALTER DATABASE ADD LOGFILE MEMBER   '+RECO' TO GROUP 1; \n",
+                        "ALTER DATABASE ADD LOGFILE MEMBER   '+RECO' TO GROUP 2; \n",
+                        "ALTER DATABASE ADD LOGFILE MEMBER   '+RECO' TO GROUP 3; \n",
+                        "alter system set db_recovery_file_dest='+RECO' scope = both; \n",
+                        "ALTER SYSTEM SET LOG_ARCHIVE_FORMAT='", { "Ref" : "DatabaseName" }, "_%t_%s_%r.arc' SCOPE=SPFILE; \n",
+                        "alter system set LOG_ARCHIVE_DEST_1='LOCATION=USE_DB_RECOVERY_FILE_DEST VALID_FOR=(ALL_LOGFILES,ALL_ROLES) DB_UNIQUE_NAME=", { "Ref" : "DatabaseName" }, "'; \n",
+                        "SHUTDOWN IMMEDIATE; \n",
+                        "STARTUP MOUNT; \n",
+                        "ALTER DATABASE ARCHIVELOG; \n",
+                        "ALTER DATABASE OPEN; \n",
+                        "ALTER DATABASE ADD STANDBY LOGFILE ('+RECO') SIZE 50M; \n",
+                        "ALTER DATABASE ADD STANDBY LOGFILE ('+RECO') SIZE 50M; \n",
+                        "ALTER DATABASE ADD STANDBY LOGFILE ('+RECO') SIZE 50M; \n",
+                        "ALTER DATABASE ADD STANDBY LOGFILE ('+RECO') SIZE 50M; \n",
+                        "ALTER SYSTEM SET LOG_ARCHIVE_CONFIG='DG_CONFIG=(", { "Ref" : "DatabaseName" }, ",", { "Ref" : "StandbyName" }, ")'; \n",
+                        "ALTER SYSTEM SET LOG_ARCHIVE_DEST_2='SERVICE=", { "Ref" : "StandbyName" }, " NOAFFIRM ASYNC VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME=", { "Ref" : "StandbyName" }, "'; \n",
+                        "ALTER SYSTEM SET LOG_ARCHIVE_DEST_STATE_2=ENABLE; \n",
+                        "ALTER DATABASE CREATE STANDBY CONTROLFILE AS '/tmp/stby.ctl'; \n",
+                        "CREATE PFILE='/tmp/stby.ora' FROM SPFILE; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/oracleexec.sh" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "#!/bin/bash \n",
+                        "IP=`grep 'IP ' /tmp/orcl-setup.txt | awk -F' ' '{ print $2}' | sed 's/\\./-/' | sed 's/\\./-/'| sed 's/\\./-/'  ` \n",
+                        "echo 'ip-'$IP'.ec2.internal' >/tmp/prip.txt \n",
+                        "IP2=`grep 'IP2' /tmp/orcl-setup.txt | awk -F' ' '{ print $2}' | sed 's/\\./-/' | sed 's/\\./-/'| sed 's/\\./-/'  ` \n",
+                        "sed s/IPSTDBY/$IP2/g /tmp/tns_stdb.ora >/tmp/tns_stdby.ora \n",
+                        "echo 'ip-'$IP2'.ec2.internal' >/tmp/sbip.txt \n",
+                        "/u01/install/grid/runInstaller -silent -ignorePrereq -responsefile /u01/install/grid-setup.rsp \n",
+                        "sleep 3m \n",
+                        "sudo /u01/app/oraInventory/orainstRoot.sh \n",
+                        "sudo /u01/app/oracle/product/12.1.0.2/grid/root.sh \n",
+                        "/u01/app/oracle/product/12.1.0.2/grid/cfgtoollogs/configToolAllCommands RESPONSE_FILE=/u01/install/asm-config.rsp \n",
+                        "/u01/app/oracle/product/12.1.0.2/grid/bin/asmca -silent -createDiskGroup -sysAsmPassword ", { "Ref" : "AsmPass" }, " -asmsnmpPassword ", { "Ref" : "AsmPass" }, " -diskGroupName RECO -diskList ORCL:RECO1,ORCL:RECO2,ORCL:RECO3 -redundancy EXTERNAL \n",
+                        "/u01/install/database/runInstaller -silent -ignorePrereq -responsefile /u01/install/db-config.rsp \n",
+                        "sleep 3m \n",
+                        "sudo /u01/app/oracle/product/12.1.0.2/db_1/root.sh \n",
+                        "/u01/app/oracle/product/12.1.0.2/db_1/cfgtoollogs/configToolAllCommands RESPONSE_FILE=/u01/install/db-post.rsp \n",
+                        "sqlplus /nolog @/tmp/dbsetup.sql \n",
+                        "cat /tmp/tns_stdby.ora >>/u01/app/oracle/product/12.1.0.2/db_1/network/admin/tnsnames.ora  \n",
+                        "cat /tmp/listener_prim.ora >>/u01/app/oracle/product/12.1.0.2/grid/network/admin/listener.ora \n",
+                        "export ORACLE_SID=+ASM \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/grid \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/grid/bin:$PATH \n",
+                        "lsnrctl stop \n",
+                        "lsnrctl start \n",
+                        "export ORACLE_SID=", { "Ref" : "DatabaseName" }, " \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1 \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH \n",
+                        " \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                  },
+
+                  "/tmp/tns_stdb.ora" : {
+                  "content" : { "Fn::Join" : ["", [
+                  "\n",
+                  "\n",
+                  { "Ref" : "StandbyName" }, " =  \n",
+                  "  (description = \n",
+                  "    (address = (protocol = tcp)(host = ip-IPSTDBY.ec2.internal)(port = 1521)) \n",
+                  "    (connect_data =    \n",
+                  "      (server = dedicated)  \n",
+                  "      (service_name = ",{ "Ref" : "StandbyName" }, ") \n",
+                  "    ) \n",
+                  "  ) \n",
+                  "   \n",
+                  "   \n"
+                  ]]},
+                  "mode"  : "000666",
+                  "owner" : "root",
+                  "group" : "root"
+                  },
+
+                  "/tmp/db-post.rsp" : {
+                  "content" : { "Fn::Join" : ["", [
+                  "oracle.assistants.server|S_SYSPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_SYSTEMPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_DBSNMPPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_PDBADMINPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_EMADMINPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_ASMSNMPPASSWORD=", { "Ref" : "AsmPass" }, "\n"
+                  ]]},
+                  "mode"  : "000644",
+                  "owner" : "root",
+                  "group" : "root"
+                },
+
+                "/tmp/db-config.rsp" : {
+                "content" : { "Fn::Join" : ["", [
+                "oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v12.1.0\n",
+                "oracle.install.option=INSTALL_DB_AND_CONFIG\n",
+                "ORACLE_HOSTNAME=MyHostName\n",
+                "UNIX_GROUP_NAME=oinstall\n",
+                "INVENTORY_LOCATION=/u01/app/oraInventory\n",
+                "SELECTED_LANGUAGES=en\n",
+                "ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1\n",
+                "ORACLE_BASE=/u01/app/oracle\n",
+                "oracle.install.db.InstallEdition=EE\n",
+                "oracle.install.db.DBA_GROUP=dba\n",
+                "oracle.install.db.OPER_GROUP=dba\n",
+                "oracle.install.db.BACKUPDBA_GROUP=dba\n",
+                "oracle.install.db.DGDBA_GROUP=dba\n",
+                "oracle.install.db.KMDBA_GROUP=dba\n",
+                "oracle.install.db.rac.configurationType=\n",
+                "oracle.install.db.CLUSTER_NODES=\n",
+                "oracle.install.db.isRACOneInstall=false\n",
+                "oracle.install.db.racOneServiceName=\n",
+                "oracle.install.db.rac.serverpoolName=\n",
+                "oracle.install.db.rac.serverpoolCardinality=0\n",
+                "oracle.install.db.config.starterdb.type=GENERAL_PURPOSE\n",
+                "oracle.install.db.config.starterdb.globalDBName=", { "Ref" : "DatabaseName" }, "\n",
+                "oracle.install.db.config.starterdb.SID=", { "Ref" : "DatabaseName" }, "\n",
+                "oracle.install.db.ConfigureAsContainerDB=false\n",
+                "oracle.install.db.config.PDBName=\n",
+                "oracle.install.db.config.starterdb.characterSet=", { "Ref" : "CharacterSet" }, "\n",
+                "oracle.install.db.config.starterdb.memoryOption=false\n",
+                "oracle.install.db.config.starterdb.memoryLimit=", { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "sga"]},"\n",
+                "oracle.install.db.config.starterdb.installExampleSchemas=true\n",
+                "oracle.install.db.config.starterdb.password.ALL=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.SYS=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.SYSTEM=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.DBSNMP=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.PDBADMIN=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.managementOption=DEFAULT\n",
+                "oracle.install.db.config.starterdb.omsHost=\n",
+                "oracle.install.db.config.starterdb.omsPort=0\n",
+                "oracle.install.db.config.starterdb.emAdminUser=\n",
+                "oracle.install.db.config.starterdb.emAdminPassword=\n",
+                "oracle.install.db.config.starterdb.enableRecovery=false\n",
+                "oracle.install.db.config.starterdb.storageType=ASM_STORAGE\n",
+                "oracle.install.db.config.starterdb.fileSystemStorage.dataLocation=\n",
+                "oracle.install.db.config.starterdb.fileSystemStorage.recoveryLocation=\n",
+                "oracle.install.db.config.asm.diskGroup=DATA\n",
+                "oracle.install.db.config.asm.ASMSNMPPassword=\n",
+                "MYORACLESUPPORT_USERNAME=\n",
+                "MYORACLESUPPORT_PASSWORD=\n",
+                "SECURITY_UPDATES_VIA_MYORACLESUPPORT=false\n",
+                "DECLINE_SECURITY_UPDATES=true\n",
+                "PROXY_HOST=\n",
+                "PROXY_PORT=\n",
+                "PROXY_USER=\n",
+                "PROXY_PWD=\n",
+                " \n"
+                ]]},
+                "mode"  : "000644",
+                "owner" : "root",
+                "group" : "root"
+              },
+
+              "/tmp/asm-config.rsp" : {
+              "content" : { "Fn::Join" : ["", [
+              "oracle.assistants.asm|S_ASMPASSWORD=", { "Ref" : "AsmPass" }, "\n",
+              "oracle.assistants.asm|S_ASMMONITORPASSWORD=", { "Ref" : "AsmPass" }, "\n",
+              "oracle.crs|S_BMCPASSWORD=", { "Ref" : "AsmPass" }, "\n"
+              ]]},
+              "mode"  : "000644",
+              "owner" : "root",
+              "group" : "root"
+            },
+
+            "/tmp/grid-setup.rsp" : {
+            "content" : { "Fn::Join" : ["", [
+            "oracle.install.responseFileVersion=/oracle/install/rspfmt_crsinstall_response_schema_v12.1.0\n",
+            "ORACLE_HOSTNAME=changehostname\n",
+            "INVENTORY_LOCATION=/u01/app/oraInventory\n",
+            "SELECTED_LANGUAGES=ar,bn,pt_BR,bg,fr_CA,ca,hr,cs,da,nl,ar_EG,en,en_GB,et,fi,fr,de,el,iw,hu,is,in,it,ja,ko,es,lv,lt,ms,es_MX,no,pl,pt,ro,ru,zh_CN,sk,sl,es_ES,sv,th,zh_TW,tr,uk,vi\n",
+            "oracle.install.option=HA_CONFIG\n",
+            "ORACLE_BASE=/u01/app/oracle\n",
+            "ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/grid\n",
+            "oracle.install.asm.OSDBA=dba\n",
+            "oracle.install.asm.OSOPER=dba\n",
+            "oracle.install.asm.OSASM=oper\n",
+            "oracle.install.crs.config.gpnp.scanName=\n",
+            "oracle.install.crs.config.gpnp.scanPort=\n",
+            "oracle.install.crs.config.ClusterType=STANDARD\n",
+            "oracle.install.crs.config.clusterName=\n",
+            "oracle.install.crs.config.gpnp.configureGNS=false\n",
+            "oracle.install.crs.config.autoConfigureClusterNodeVIP=true\n",
+            "oracle.install.crs.config.gpnp.gnsOption=CREATE_NEW_GNS\n",
+            "oracle.install.crs.config.gpnp.gnsClientDataFile=\n",
+            "oracle.install.crs.config.gpnp.gnsSubDomain=\n",
+            "oracle.install.crs.config.gpnp.gnsVIPAddress=\n",
+            "oracle.install.crs.config.clusterNodes=\n",
+            "oracle.install.crs.config.networkInterfaceList=\n",
+            "oracle.install.crs.config.storageOption=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.votingDiskLocations=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.votingDiskRedundancy=NORMAL\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.ocrLocations=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.ocrRedundancy=NORMAL\n",
+            "oracle.install.crs.config.useIPMI=false\n",
+            "oracle.install.crs.config.ipmi.bmcUsername=\n",
+            "oracle.install.crs.config.ipmi.bmcPassword=\n",
+            "oracle.install.asm.SYSASMPassword=", { "Ref" : "AsmPass" }, "\n",
+            "oracle.install.asm.diskGroup.name=DATA\n",
+            "oracle.install.asm.diskGroup.redundancy=EXTERNAL\n",
+            "oracle.install.asm.diskGroup.AUSize=1\n",
+            "oracle.install.asm.diskGroup.disks=ORCL:DATA1,ORCL:DATA2,ORCL:DATA3,ORCL:DATA4,ORCL:DATA5,ORCL:DATA6\n",
+            "oracle.install.asm.diskGroup.diskDiscoveryString=\n",
+            "oracle.install.asm.monitorPassword=", { "Ref" : "AsmPass" }, "\n",
+            "oracle.install.asm.ClientDataFile=\n",
+            "oracle.install.crs.config.ignoreDownNodes=false\n",
+            "oracle.install.config.managementOption=NONE\n",
+            "oracle.install.config.omsHost=\n",
+            "oracle.install.config.omsPort=0\n",
+            "oracle.install.config.emAdminUser=\n",
+            "oracle.install.config.emAdminPassword=", { "Ref" : "AsmPass" }, "\n",
+            "\n",
+            " \n"
+            ]]},
+            "mode"  : "000644",
+            "owner" : "root",
+            "group" : "root"
+            },
+
+
+                                "/tmp/orcl-download-s3.sh" : {
+                                "content" : { "Fn::Join" : ["", [
+                                "#!/bin/bash \n",
+                                "aws s3 sync s3://", { "Ref" : "BucketName" }, " /u01/install \n",
+                                " \n"
+                                ]]},
+                                "mode"  : "000755",
+                                "owner" : "root",
+                                "group" : "root"
+                                }
+            		}
+		     }
+		} ,
+                "AWS::CloudFormation::Authentication": {
+                    "S3AccessCreds" : {
+                        "type": "S3",
+                       "buckets": [ { "Ref" : "BucketName" } ],
+                      "roleName":[ { "Ref": "InstanceRoleOrcl" }]
+                        }
+                }
+      },
+      "Properties" : {
+        "IamInstanceProfile":{
+               "Ref":"InstanceProfileOrcl"
+            },
+        "ImageId" : { "Fn::FindInMap" : [ "AWSRegionArch2AMI", { "Ref" : "AWS::Region" },
+                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "Arch" ] } ] },
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName"  : { "Ref" : "KeyName" },
+        "NetworkInterfaces" : [ {
+          "NetworkInterfaceId" : {"Ref" : "Eth0" },
+          "DeviceIndex" : "0"
+        }],
+        "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/xvda",
+            "Ebs" : { "VolumeSize" : "20", "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdb",
+            "Ebs" : { "VolumeSize" : "50", "VolumeType" : "gp2" }
+          },
+ 	        {
+            "DeviceName" : "/dev/xvdc",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdd",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+ 	        {
+            "DeviceName" : "/dev/xvde",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdf",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdg",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdh",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdi",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdj",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdk",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdx",
+            "Ebs" : { "VolumeSize" : "25", "VolumeType" : "gp2" }
+          }
+        ],
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                       "#!/bin/bash -xe\n",
+      		             "cd /tmp \n",
+                       "yum install -y wget\n",
+                       "curl -O https://bootstrap.pypa.io/get-pip.py\n",
+                       "python get-pip.py\n",
+                       "pip install awscli\n",
+                       "wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+                       "gunzip aws-cfn-bootstrap-latest.tar.gz\n",
+                       "tar -xvf aws-cfn-bootstrap-latest.tar\n",
+                       "cd aws-cfn-bootstrap*\n",
+                       "python setup.py build\n",
+                       "python setup.py install\n",
+		                   "yum install -y zip\n",
+	            	       "yum install -y unzip\n",
+                       "/usr/bin/cfn-init -v ",
+                       "         --stack ", { "Ref" : "AWS::StackName" },
+                       "         --resource EC2Instance ",
+                       "         --region ", { "Ref" : "AWS::Region" }, "\n",
+                       "cp /etc/sysctl.conf /etc/sysctl.conf_backup\n",
+                       "cat /etc/sysctl.conf | grep -v shmall | grep -v shmmax >/etc/sysctl.conf_txt\n",
+                       "mv -f /etc/sysctl.conf_txt /etc/sysctl.conf\n",
+                       "echo '#input parameters from Cloudformation' >>/etc/sysctl.conf\n",
+                       "echo 'fs.file-max = 6815744' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.sem = 250 32000 100 128' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmmni = 4096' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmall = ", { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "shmall"]},"' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmmax = ", { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "shmax"]},"' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.rmem_default = 262144' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.rmem_max = 4194304' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.wmem_default = 262144' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.wmem_max = 1048576' >>/etc/sysctl.conf\n",
+                       "echo 'fs.aio-max-nr = 1048576' >>/etc/sysctl.conf\n",
+                       "echo 'net.ipv4.ip_local_port_range = 9000 65500' >>/etc/sysctl.conf\n",
+                       "/sbin/sysctl -p\n",
+                       "cp /etc/security/limits.conf /etc/security/limits.conf_backup\n",
+                       "cat /etc/security/limits.conf | grep -v End >/etc/security/limits.conf_txt\n",
+                       "mv -f /etc/security/limits.conf_txt /etc/security/limits.conf\n",
+                       "echo '#input parameters from Cloudformation' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   nofile    1024' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   nofile    65536' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   nproc    16384' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   nproc    16384' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   stack    10240' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   stack    32768' >>/etc/security/limits.conf\n",
+                       "echo '# End of file' >>/etc/security/limits.conf\n",
+                       "groupadd -g 54321 oinstall\n",
+                       "groupadd -g 54322 dba\n",
+                       "groupadd -g 54323 oper\n",
+                       "useradd -u 54321 -g oinstall -G dba,oper oracle\n",
+                       "mkdir /u01\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdb\n",
+                       "mkfs -t ext4 /dev/xvdb1\n",
+                       "echo '/dev/xvdb1 /u01   ext4    defaults,noatime  1   1'>>/etc/fstab\n",
+                       "mount /u01\n",
+                       "mkdir -p /u01/app/oracle/product/12.1.0.2/db_1\n",
+                       "mkdir -p /u01/app/oracle/product/12.1.0.2/grid\n",
+                       "mkdir -p /u01/install\n",
+                       "mv /tmp/*.rsp /u01/install/.\n",
+                       "/tmp/orcl-download-s3.sh\n",
+                       "cd /u01/install\n",
+                       "unzip linuxamd64_12102_database_1of2.zip\n",
+                       "unzip linuxamd64_12102_database_2of2.zip\n",
+                       "unzip linuxamd64_12102_grid_1of2.zip\n",
+                       "unzip linuxamd64_12102_grid_2of2.zip\n",
+                       "cd /u01/install\n",
+                       "yum install -y kmod-oracleasm\n",
+                       "rpm -Uvh oracleasm-support-2.1.8-1.el6.x86_64.rpm\n",
+                       "rpm -Uvh oracleasmlib-2.0.4-1.el6.x86_64.rpm\n",
+                       "chown -R oracle:oinstall /u01\n",
+                       "chmod -R 775 /u01\n",
+                       "oracleasm configure -u oracle -g dba -b -s y -e\n",
+                       "oracleasm init\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdc\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdd\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvde\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdf\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdg\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdh\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdi\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdj\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdk\n",
+                       "oracleasm createdisk RECO1 /dev/xvdc1\n",
+                       "oracleasm createdisk RECO2 /dev/xvdd1\n",
+                       "oracleasm createdisk RECO3 /dev/xvde1\n",
+                       "oracleasm createdisk DATA1 /dev/xvdf1\n",
+                       "oracleasm createdisk DATA2 /dev/xvdg1\n",
+                       "oracleasm createdisk DATA3 /dev/xvdh1\n",
+                       "oracleasm createdisk DATA4 /dev/xvdi1\n",
+                       "oracleasm createdisk DATA5 /dev/xvdj1\n",
+                       "oracleasm createdisk DATA6 /dev/xvdk1\n",
+                       "oracleasm init\n",
+                       "yum install -y xorg-x11-xauth.x86_64 xorg-x11-server-utils.x86_64 dbus-x11.x86_64\n",
+                       "yum install binutils -y\n",
+                       "yum install compat-libcap1 -y\n",
+                       "yum install gcc -y\n",
+                       "yum install gcc-c++ -y\n",
+                       "yum install glibc -y\n",
+                       "yum install glibc.i686 -y\n",
+                       "yum install glibc-devel -y\n",
+                       "yum install glibc-devel.i686 -y\n",
+                       "yum install ksh -y\n",
+                       "yum install libgcc -y\n",
+                       "yum install libgcc.i686 -y\n",
+                       "yum install libstdc++ -y\n",
+                       "yum install libstdc++.i686 -y\n",
+                       "yum install libstdc++-devel -y\n",
+                       "yum install libstdc++-devel.i686 -y\n",
+                       "yum install libaio -y\n",
+                       "yum install libaio.i686 -y\n",
+                       "yum install libaio-devel -y\n",
+                       "yum install libaio-devel.i686 -y\n",
+                       "yum install libXext -y\n",
+                       "yum install libXext.i686 -y\n",
+                       "yum install libXtst -y\n",
+                       "yum install libXtst.i686 -y\n",
+                       "yum install libX11 -y\n",
+                       "yum install libX11.i686 -y\n",
+                       "yum install libXau -y\n",
+                       "yum install libXau.i686 -y\n",
+                       "yum install libxcb -y\n",
+                       "yum install libxcb.i686 -y\n",
+                       "yum install libXi -y\n",
+                       "yum install libXi.i686 -y\n",
+                       "yum install make -y\n",
+                       "yum install sysstat -y\n",
+                       "yum install unixODBC -y\n",
+                       "yum install unixODBC-devel -y\n",
+                       "sed -i -- 's/4096/16384/g' /etc/security/limits.d/20-nproc.conf\n",
+                       "sed -i -- 's/SELINUX=enforcing/SELINUX=permissive/g' /etc/selinux/config\n",
+                       "setenforce Permissive\n",
+                       "echo 'export TMP=/tmp' >>/home/oracle/.bash_profile\n",
+                       "echo 'export TMPDIR=/tmp' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_BASE=/u01/app/oracle' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_SID=", { "Ref" : "DatabaseName" }, "' >>/home/oracle/.bash_profile\n",
+                       "echo 'export PATH=/usr/sbin:$PATH' >>/home/oracle/.bash_profile\n",
+                       "echo 'export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH' >>/home/oracle/.bash_profile\n",
+                       "echo 'export LD_LIBRARY_PATH=/u01/app/oracle/product/12.1.0.2/db_1/lib:/lib:/usr/lib' >>/home/oracle/.bash_profile\n",
+                       "echo 'export CLASSPATH=/u01/app/oracle/product/12.1.0.2/db_1/jlib:/u01/app/oracle/product/12.1.0.2/db_1/rdbms/jlib' >>/home/oracle/.bash_profile\n",
+                       "mkswap /dev/xvdx \n",
+                       "swapon /dev/xvdx \n",
+                       "echo '/dev/xvdx    swap      swap    defaults       0 0'>>/etc/fstab\n",
+                       "yum-config-manager --enable rhui-REGION-rhel-server-extras rhui-REGION-rhel-server-optional\n",
+                       "yum install -y compat-libstdc++-33\n",
+                       "yum install -y nfs-utils\n",
+                       "mkdir -p /home/oracle/.ssh\n",
+                       "cp /home/ec2-user/.ssh/authorized_keys /home/oracle/.ssh/.\n",
+                       "chown oracle:dba /home/oracle/.ssh /home/oracle/.ssh/authorized_keys\n",
+                       "chmod 600 /home/oracle/.ssh/authorized_keys\n",
+                       "echo 'oracle ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers\n",
+                       "sed -i -- 's/requiretty/!requiretty/g' /etc/sudoers\n",
+                       "sudo su -l oracle -c /tmp/oracleexec.sh\n",
+                       "sed -i -- 's/!requiretty/requiretty/g' /etc/sudoers\n",
+                       "aws s3 cp /tmp/stby.ctl s3://", { "Ref" : "BucketName" }, "/config/  \n",
+                       "aws s3 cp /tmp/stby.ora s3://", { "Ref" : "BucketName" }, "/config/  \n",
+                       "aws s3 cp /u01/app/oracle/product/12.1.0.2/db_1/network/admin/tnsnames.ora s3://", { "Ref" : "BucketName" }, "/config/  \n",
+                       "aws s3 cp /u01/app/oracle/product/12.1.0.2/db_1/dbs/orapw", { "Ref" : "DatabaseName" }, " s3://", { "Ref" : "BucketName" }, "/config/  \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /u01/install/*.rsp \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /tmp/*.sh \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /var/log/cloud-init.log \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /var/lib/cloud/instance/obj.pkl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/vendor-data.txt \n",
+                       "/usr/bin/cfn-signal -e $? ",
+                       "         --stack ", { "Ref" : "AWS::StackName" },
+                       "         --resource EC2Instance ",
+                       "         --region ", { "Ref" : "AWS::Region" }, "\n"
+        ]]}},
+        "Tags"     : [ {"Key" : "Name", "Value" : { "Ref" : "DatabaseName" } } ]
+      },
+      "CreationPolicy" : {
+       "ResourceSignal" : {
+         "Timeout" : "PT60M"
+       }
+     }
+    },
+
+    "Eth0" : {
+      "Type" : "AWS::EC2::NetworkInterface",
+      "Properties" : {
+        "Description"        : "eth0",
+        "GroupSet"           : [ { "Ref" : "SSHSecurityGroup" } ],
+        "PrivateIpAddresses" : [
+          { "PrivateIpAddress" : { "Ref" : "PrimaryIPAddress" }, "Primary" : "true" }
+        ],
+        "SourceDestCheck"    : "true",
+        "SubnetId"           : { "Ref" : "SubnetId" },
+        "Tags"               : [ {"Key" : "Name", "Value" : "Interface 0"}, {"Key" : "Interface", "Value" : "eth0"} ]
+      }
+    },
+
+
+    "STDBYInstance" : {
+      "Type" : "AWS::EC2::Instance",
+      "DependsOn" : "EC2Instance",
+      "Metadata":{
+      "AWS::CloudFormation::Init":{
+		     "config" : {
+            		"files" : {
+				"/tmp/orcl-setup.txt" : {
+                		"content" : { "Fn::Join" : ["", [
+                  		"IP ", { "Ref" : "PrimaryIPAddress" }, " \n",
+                                "IP2 ", { "Ref" : "STANDBYIPAddress" }, " \n",
+                                "StandbyName ", { "Ref" : "StandbyName" }, " \n",
+                                "EBSDataSize ", { "Ref" : "EbsData" }, " \n",
+                                "EBSRecoSize ", { "Ref" : "EbsReco" }, " \n",
+                                "VPC ", { "Ref" : "VpcId" }, " \n",
+                                "SubnetId ", { "Ref" : "SubnetId" }, " \n",
+                                "SecurityGroup ", { "Ref" : "SSHSecurityGroup" }, " \n",
+                                "Bucket ", { "Ref" : "BucketName" }, " \n",
+                  		" \n"
+                  		]]},
+                		"mode"  : "000644",
+                		"owner" : "root",
+                		"group" : "root"
+              			},
+                    "/tmp/dbcheck.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, " as sysdba \n",
+                        "set pages 1000 line 150 \n",
+                        "spool /tmp/dbcheck.log \n",
+                        "alter system switch LOGFILE; \n",
+                        "alter system switch LOGFILE; \n",
+                        "alter system switch LOGFILE; \n",
+                        "ALTER SESSION SET nls_date_format='DD-MON-YYYY HH24:MI:SS'; \n",
+                        "SELECT sequence#, first_time, next_time, applied \n",
+                        "FROM   v$archived_log \n",
+                        "ORDER BY sequence#; \n",
+                        "alter system switch LOGFILE; \n",
+                        "alter system switch LOGFILE; \n",
+                        "alter system switch LOGFILE; \n",
+                        "ALTER SESSION SET nls_date_format='DD-MON-YYYY HH24:MI:SS'; \n",
+                        "SELECT sequence#, first_time, next_time, applied \n",
+                        "FROM   v$archived_log \n",
+                        "ORDER BY sequence#; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/dbbroker.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "spool /tmp/dbbroker.log \n",
+                        "connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, " as sysdba \n",
+                        "set pages 1000 line 150 \n",
+                        "ALTER SYSTEM SET log_archive_dest_2  = '' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_CONFIG_FILE1 = '+DATA/guard.DAT' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_CONFIG_FILE2 = '+RECO/guard.DAT' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_START=TRUE; \n",
+                        "connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "StandbyName" }, " as sysdba \n",
+                        "set pages 1000 line 150 \n",
+                        "ALTER SYSTEM SET log_archive_dest_2  = '' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_CONFIG_FILE1 = '+DATA/guard.DAT' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_CONFIG_FILE2 = '+RECO/guard.DAT' SCOPE=BOTH; \n",
+                        "ALTER SYSTEM SET DG_BROKER_START=TRUE; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/dbsetup.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "connect / as sysdba \n",
+                        "set pages 1000 line 150 \n",
+                        "spool /tmp/dbsetup.log \n",
+                        "ALTER SESSION SET nls_date_format='DD-MON-YYYY HH24:MI:SS'; \n",
+                        "SELECT sequence#, first_time, next_time, applied \n",
+                        "FROM   v$archived_log \n",
+                        "ORDER BY sequence#; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/start.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "STARTUP NOMOUNT PFILE='/u01/install/config/stby.ora'; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/start2.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "STARTUP NOMOUNT PFILE='/u01/install/config/initstby.ora'; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/stop.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "shutdown immediate; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/post-duplicate.sql" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "alter system set log_archive_dest_1='LOCATION=USE_DB_RECOVERY_FILE_DEST VALID_FOR=(ALL_LOGFILES,ALL_ROLES) DB_UNIQUE_NAME=", { "Ref" : "StandbyName" }, "'  scope=both; \n",
+                        "alter system set log_archive_dest_2='SERVICE=", { "Ref" : "DatabaseName" }, " ASYNC VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME=", { "Ref" : "DatabaseName" }, "' scope=both; \n",
+                        "ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT FROM SESSION; \n",
+                        "exit \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/rman.cmd" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "connect target / \n",
+                        "restore controlfile to '+DATA' from '/u01/install/config/stby.ctl'; \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/rman2.cmd" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "connect target sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, " \n",
+                        "connect auxiliary sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "StandbyName" }, " \n",
+                        " \n",
+                        "configure default device type to 'disk'; \n",
+                        "run { \n",
+                        "allocate channel ch1 device type disk;\n",
+                        "ALLOCATE AUXILIARY CHANNEL aux1 DEVICE TYPE DISK;\n",
+                        "DUPLICATE TARGET DATABASE \n",
+                        "  FOR STANDBY \n",
+                        "  FROM ACTIVE DATABASE \n",
+                        "  DORECOVER \n",
+                        "  SPFILE \n",
+                        "    SET db_unique_name='", { "Ref" : "StandbyName" }, "' COMMENT 'Is standby' \n",
+                        "    SET LOG_ARCHIVE_DEST_2='SERVICE=", { "Ref" : "DatabaseName" }, " ASYNC VALID_FOR=(ONLINE_LOGFILES,PRIMARY_ROLE) DB_UNIQUE_NAME=", { "Ref" : "DatabaseName" }, "' \n",
+                        "    SET FAL_SERVER='", { "Ref" : "DatabaseName" }, "' COMMENT 'Is primary' \n",
+                        "  NOFILENAMECHECK; \n",
+                        "release channel aux1; \n",
+                        "release channel ch1; \n",
+                        "} \n",
+                        " \n",
+                        " \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                    },
+                    "/tmp/oracleexec.sh" : {
+                        "content" : { "Fn::Join" : ["", [
+                        "#!/bin/bash \n",
+                        "/u01/install/grid/runInstaller -silent -ignorePrereq -responsefile /u01/install/grid-setup.rsp \n",
+                        "sleep 3m \n",
+                        "sudo /u01/app/oraInventory/orainstRoot.sh \n",
+                        "sudo /u01/app/oracle/product/12.1.0.2/grid/root.sh \n",
+                        "/u01/app/oracle/product/12.1.0.2/grid/cfgtoollogs/configToolAllCommands RESPONSE_FILE=/u01/install/asm-config.rsp \n",
+                        "/u01/app/oracle/product/12.1.0.2/grid/bin/asmca -silent -createDiskGroup -sysAsmPassword ", { "Ref" : "AsmPass" }, " -asmsnmpPassword ", { "Ref" : "AsmPass" }, " -diskGroupName RECO -diskList ORCL:RECO1,ORCL:RECO2,ORCL:RECO3 -redundancy EXTERNAL \n",
+                        "/u01/install/database/runInstaller -silent -ignorePrereq -responsefile /u01/install/db-config.rsp \n",
+                        "sleep 3m \n",
+                        "sudo c \n",
+                        "/u01/app/oracle/product/12.1.0.2/db_1/cfgtoollogs/configToolAllCommands RESPONSE_FILE=/u01/install/db-post.rsp \n",
+                        "cp /u01/install/config/tnsnames.ora /u01/app/oracle/product/12.1.0.2/db_1/network/admin/tnsnames.ora \n",
+                        "cp /u01/install/config/orapw* /u01/app/oracle/product/12.1.0.2/db_1/dbs/. \n",
+                        "cat /tmp/listener_stdb.ora >>/u01/app/oracle/product/12.1.0.2/grid/network/admin/listener.ora \n",
+                        "export ORACLE_SID=+ASM \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/grid \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/grid/bin:$PATH \n",
+                        "lsnrctl stop \n",
+                        "lsnrctl start \n",
+                        "export ORACLE_SID=", { "Ref" : "DatabaseName" }, " \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1 \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH \n",
+                        "cat /u01/install/config/stby.ora | grep -v log_archive_dest_1 | grep -v log_archive_dest_2 | grep -v control_file >/u01/install/config/initstby.ora \n",
+                        "AUD=`grep audit /u01/install/config/initstby.ora | grep u01 | awk -F''\\' '{ print $2}'` \n",
+                        "mkdir -p $AUD \n",
+                        "sqlplus / as sysdba @/tmp/start.sql \n",
+                        "rman cmdfile=/tmp/rman.cmd log=/tmp/rman.log \n",
+                        "sqlplus / as sysdba @/tmp/stop.sql \n",
+                        "export ORACLE_SID=+ASM \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/grid \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/grid/bin:$PATH \n",
+                        "CTL=`echo -e 'find --type controlfile . *\\n' | asmcmd  | grep current | awk '{ print $2}'` \n",
+                        "echo '*.control_files='\\'$CTL\\' >>/u01/install/config/initstby.ora \n",
+                        "echo '*.standby_file_management='\\'AUTO\\'  >>/u01/install/config/initstby.ora \n",
+                        "echo '*.fal_server='\\'", { "Ref" : "DatabaseName" }, "\\' >>/u01/install/config/initstby.ora \n",
+                        "echo '*.db_unique_name='\\'", { "Ref" : "StandbyName" }, "\\'>>/u01/install/config/initstby.ora \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1 \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH \n",
+                        "export ORACLE_SID=", { "Ref" : "StandbyName" }, " \n",
+                        "cp /u01/app/oracle/product/12.1.0.2/db_1/dbs/orapw", { "Ref" : "DatabaseName" }, " /u01/app/oracle/product/12.1.0.2/db_1/dbs/orapw", { "Ref" : "StandbyName" }, "  \n",
+                        "echo '", { "Ref" : "StandbyName" }, ":/u01/app/oracle/product/12.1.0.2/db_1:N' >>/etc/oratab \n",
+                        "sqlplus / as sysdba @/tmp/start2.sql \n",
+                        "rman cmdfile=/tmp/rman2.cmd log=/tmp/rman2.log \n",
+                        "sqlplus / as sysdba @/tmp/post-duplicate.sql \n",
+                        "sqlplus /nolog @/tmp/dbbroker.sql \n",
+                        "sleep 3m \n",
+                        "export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1 \n",
+                        "export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH \n",
+                        "export ORACLE_SID=", { "Ref" : "StandbyName" }, " \n",
+                        "echo -e 'connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, "\\ncreate configuration awsguard as primary database is ", { "Ref" : "DatabaseName" }, " connect identifier is ", { "Ref" : "DatabaseName" }, ";\\nexit\\n' | dgmgrl \n",
+                        "echo -e 'connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, "\\nadd database ", { "Ref" : "StandbyName" }, " as  connect identifier is ", { "Ref" : "StandbyName" }, "  maintained as physical;\\nexit\\n' | dgmgrl  \n",
+                        "echo -e 'connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, "\\nshow configuration;\\nexit\\n' | dgmgrl >/tmp/dgmgrl.conf \n",
+                        "echo -e 'connect sys/", { "Ref" : "DatabasePass" }, "@", { "Ref" : "DatabaseName" }, "\\nenable configuration;\\nexit\\n' | dgmgrl \n",
+                        "sqlplus /nolog @/tmp/dbcheck.sql \n",
+                        "sqlplus /nolog @/tmp/dbsetup.sql \n",
+                        " \n"
+                    ]]},
+                    "mode"  : "000777",
+                    "owner" : "root",
+                    "group" : "root"
+                  },
+
+
+                  "/tmp/listener_stdb.ora" : {
+                  "content" : { "Fn::Join" : ["", [
+                  "\n",
+                  "SID_LIST_LISTENER = \n",
+                  " (SID_LIST =  \n",
+                  "   (SID_DESC =  \n",
+                  "     (GLOBAL_DBNAME = ",{ "Ref" : "StandbyName" }, ")  \n",
+                  "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                  "     (SID_NAME = ",{ "Ref" : "StandbyName" }, ")   \n",
+                  "   )    \n",
+                  "   (SID_DESC =  \n",
+                  "     (GLOBAL_DBNAME = ",{ "Ref" : "StandbyName" }, "_DGMGRL)  \n",
+                  "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                  "     (SID_NAME = ",{ "Ref" : "StandbyName" }, ")   \n",
+                  "   )    \n",
+                  "   (SID_DESC =  \n",
+                  "     (GLOBAL_DBNAME = ",{ "Ref" : "StandbyName" }, "_DGB)  \n",
+                  "     (ORACLE_HOME = /u01/app/oracle/product/12.1.0.2/db_1)    \n",
+                  "     (SID_NAME = ",{ "Ref" : "StandbyName" }, ")   \n",
+                  "   )    \n",
+                  " ) \n",
+                  "  \n",
+                  "  \n"
+                  ]]},
+                  "mode"  : "000666",
+                  "owner" : "root",
+                  "group" : "root"
+                  },
+
+
+                  "/tmp/db-post.rsp" : {
+                  "content" : { "Fn::Join" : ["", [
+                  "oracle.assistants.server|S_SYSPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_SYSTEMPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_DBSNMPPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_PDBADMINPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_EMADMINPASSWORD=", { "Ref" : "DatabasePass" }, "\n",
+                  "oracle.assistants.server|S_ASMSNMPPASSWORD=", { "Ref" : "AsmPass" }, "\n"
+                  ]]},
+                  "mode"  : "000644",
+                  "owner" : "root",
+                  "group" : "root"
+                },
+
+                "/tmp/db-config.rsp" : {
+                "content" : { "Fn::Join" : ["", [
+                "oracle.install.responseFileVersion=/oracle/install/rspfmt_dbinstall_response_schema_v12.1.0\n",
+                "oracle.install.option=INSTALL_DB_SWONLY\n",
+                "ORACLE_HOSTNAME=MyHostName\n",
+                "UNIX_GROUP_NAME=oinstall\n",
+                "INVENTORY_LOCATION=/u01/app/oraInventory\n",
+                "SELECTED_LANGUAGES=en\n",
+                "ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1\n",
+                "ORACLE_BASE=/u01/app/oracle\n",
+                "oracle.install.db.InstallEdition=EE\n",
+                "oracle.install.db.DBA_GROUP=dba\n",
+                "oracle.install.db.OPER_GROUP=dba\n",
+                "oracle.install.db.BACKUPDBA_GROUP=dba\n",
+                "oracle.install.db.DGDBA_GROUP=dba\n",
+                "oracle.install.db.KMDBA_GROUP=dba\n",
+                "oracle.install.db.rac.configurationType=\n",
+                "oracle.install.db.CLUSTER_NODES=\n",
+                "oracle.install.db.isRACOneInstall=false\n",
+                "oracle.install.db.racOneServiceName=\n",
+                "oracle.install.db.rac.serverpoolName=\n",
+                "oracle.install.db.rac.serverpoolCardinality=0\n",
+                "oracle.install.db.config.starterdb.type=GENERAL_PURPOSE\n",
+                "oracle.install.db.config.starterdb.globalDBName=", { "Ref" : "DatabaseName" }, "\n",
+                "oracle.install.db.config.starterdb.SID=", { "Ref" : "DatabaseName" }, "\n",
+                "oracle.install.db.ConfigureAsContainerDB=false\n",
+                "oracle.install.db.config.PDBName=\n",
+                "oracle.install.db.config.starterdb.characterSet=AL32UTF8\n",
+                "oracle.install.db.config.starterdb.memoryOption=false\n",
+                "oracle.install.db.config.starterdb.memoryLimit=", { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "sga"]},"\n",
+                "oracle.install.db.config.starterdb.installExampleSchemas=true\n",
+                "oracle.install.db.config.starterdb.password.ALL=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.SYS=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.SYSTEM=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.DBSNMP=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.password.PDBADMIN=", { "Ref" : "DatabasePass" }, "\n",
+                "oracle.install.db.config.starterdb.managementOption=DEFAULT\n",
+                "oracle.install.db.config.starterdb.omsHost=\n",
+                "oracle.install.db.config.starterdb.omsPort=0\n",
+                "oracle.install.db.config.starterdb.emAdminUser=\n",
+                "oracle.install.db.config.starterdb.emAdminPassword=\n",
+                "oracle.install.db.config.starterdb.enableRecovery=false\n",
+                "oracle.install.db.config.starterdb.storageType=ASM_STORAGE\n",
+                "oracle.install.db.config.starterdb.fileSystemStorage.dataLocation=\n",
+                "oracle.install.db.config.starterdb.fileSystemStorage.recoveryLocation=\n",
+                "oracle.install.db.config.asm.diskGroup=DATA\n",
+                "oracle.install.db.config.asm.ASMSNMPPassword=\n",
+                "MYORACLESUPPORT_USERNAME=\n",
+                "MYORACLESUPPORT_PASSWORD=\n",
+                "SECURITY_UPDATES_VIA_MYORACLESUPPORT=false\n",
+                "DECLINE_SECURITY_UPDATES=true\n",
+                "PROXY_HOST=\n",
+                "PROXY_PORT=\n",
+                "PROXY_USER=\n",
+                "PROXY_PWD=\n",
+                " \n"
+                ]]},
+                "mode"  : "000644",
+                "owner" : "root",
+                "group" : "root"
+              },
+
+              "/tmp/asm-config.rsp" : {
+              "content" : { "Fn::Join" : ["", [
+              "oracle.assistants.asm|S_ASMPASSWORD=", { "Ref" : "AsmPass" }, "\n",
+              "oracle.assistants.asm|S_ASMMONITORPASSWORD=", { "Ref" : "AsmPass" }, "\n",
+              "oracle.crs|S_BMCPASSWORD=", { "Ref" : "AsmPass" }, "\n"
+              ]]},
+              "mode"  : "000644",
+              "owner" : "root",
+              "group" : "root"
+            },
+
+            "/tmp/grid-setup.rsp" : {
+            "content" : { "Fn::Join" : ["", [
+            "oracle.install.responseFileVersion=/oracle/install/rspfmt_crsinstall_response_schema_v12.1.0\n",
+            "ORACLE_HOSTNAME=changehostname\n",
+            "INVENTORY_LOCATION=/u01/app/oraInventory\n",
+            "SELECTED_LANGUAGES=ar,bn,pt_BR,bg,fr_CA,ca,hr,cs,da,nl,ar_EG,en,en_GB,et,fi,fr,de,el,iw,hu,is,in,it,ja,ko,es,lv,lt,ms,es_MX,no,pl,pt,ro,ru,zh_CN,sk,sl,es_ES,sv,th,zh_TW,tr,uk,vi\n",
+            "oracle.install.option=HA_CONFIG\n",
+            "ORACLE_BASE=/u01/app/oracle\n",
+            "ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/grid\n",
+            "oracle.install.asm.OSDBA=dba\n",
+            "oracle.install.asm.OSOPER=dba\n",
+            "oracle.install.asm.OSASM=oper\n",
+            "oracle.install.crs.config.gpnp.scanName=\n",
+            "oracle.install.crs.config.gpnp.scanPort=\n",
+            "oracle.install.crs.config.ClusterType=STANDARD\n",
+            "oracle.install.crs.config.clusterName=\n",
+            "oracle.install.crs.config.gpnp.configureGNS=false\n",
+            "oracle.install.crs.config.autoConfigureClusterNodeVIP=true\n",
+            "oracle.install.crs.config.gpnp.gnsOption=CREATE_NEW_GNS\n",
+            "oracle.install.crs.config.gpnp.gnsClientDataFile=\n",
+            "oracle.install.crs.config.gpnp.gnsSubDomain=\n",
+            "oracle.install.crs.config.gpnp.gnsVIPAddress=\n",
+            "oracle.install.crs.config.clusterNodes=\n",
+            "oracle.install.crs.config.networkInterfaceList=\n",
+            "oracle.install.crs.config.storageOption=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.votingDiskLocations=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.votingDiskRedundancy=NORMAL\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.ocrLocations=\n",
+            "oracle.install.crs.config.sharedFileSystemStorage.ocrRedundancy=NORMAL\n",
+            "oracle.install.crs.config.useIPMI=false\n",
+            "oracle.install.crs.config.ipmi.bmcUsername=\n",
+            "oracle.install.crs.config.ipmi.bmcPassword=\n",
+            "oracle.install.asm.SYSASMPassword=", { "Ref" : "AsmPass" }, "\n",
+            "oracle.install.asm.diskGroup.name=DATA\n",
+            "oracle.install.asm.diskGroup.redundancy=EXTERNAL\n",
+            "oracle.install.asm.diskGroup.AUSize=1\n",
+            "oracle.install.asm.diskGroup.disks=ORCL:DATA1,ORCL:DATA2,ORCL:DATA3,ORCL:DATA4,ORCL:DATA5,ORCL:DATA6\n",
+            "oracle.install.asm.diskGroup.diskDiscoveryString=\n",
+            "oracle.install.asm.monitorPassword=", { "Ref" : "AsmPass" }, "\n",
+            "oracle.install.asm.ClientDataFile=\n",
+            "oracle.install.crs.config.ignoreDownNodes=false\n",
+            "oracle.install.config.managementOption=NONE\n",
+            "oracle.install.config.omsHost=\n",
+            "oracle.install.config.omsPort=0\n",
+            "oracle.install.config.emAdminUser=\n",
+            "oracle.install.config.emAdminPassword=", { "Ref" : "AsmPass" }, "\n",
+            "\n",
+            " \n"
+            ]]},
+            "mode"  : "000644",
+            "owner" : "root",
+            "group" : "root"
+            },
+
+
+                                "/tmp/orcl-download-s3.sh" : {
+                                "content" : { "Fn::Join" : ["", [
+                                "#!/bin/bash \n",
+                                "aws s3 sync s3://", { "Ref" : "BucketName" }, " /u01/install \n",
+                                " \n"
+                                ]]},
+                                "mode"  : "000755",
+                                "owner" : "root",
+                                "group" : "root"
+                                }
+            		}
+		     }
+		} ,
+                "AWS::CloudFormation::Authentication": {
+                    "S3AccessCreds" : {
+                        "type": "S3",
+                       "buckets": [ { "Ref" : "BucketName" } ],
+                      "roleName":[ { "Ref": "InstanceRoleOrcl" }]
+                        }
+                }
+      },
+      "Properties" : {
+        "IamInstanceProfile":{
+               "Ref":"InstanceProfileOrcl"
+            },
+        "ImageId" : { "Fn::FindInMap" : [ "AWSRegionArch2AMI", { "Ref" : "AWS::Region" },
+                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "Arch" ] } ] },
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName"  : { "Ref" : "KeyName" },
+        "NetworkInterfaces" : [ {
+          "NetworkInterfaceId" : {"Ref" : "EthS" },
+          "DeviceIndex" : "0"
+        }],
+        "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/xvda",
+            "Ebs" : { "VolumeSize" : "20", "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdb",
+            "Ebs" : { "VolumeSize" : "50", "VolumeType" : "gp2" }
+          },
+ 	  {
+            "DeviceName" : "/dev/xvdc",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdd",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+ 	  {
+            "DeviceName" : "/dev/xvde",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsReco" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdf",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdg",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdh",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdi",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdj",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdk",
+            "Ebs" : { "VolumeSize" : { "Ref" : "EbsData" }, "VolumeType" : "gp2" }
+          },
+          {
+            "DeviceName" : "/dev/xvdx",
+            "Ebs" : { "VolumeSize" : "25", "VolumeType" : "gp2" }
+          }
+        ],
+        "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                       "#!/bin/bash -xe\n",
+      		             "cd /tmp \n",
+                       "yum install -y wget\n",
+                       "curl -O https://bootstrap.pypa.io/get-pip.py\n",
+                       "python get-pip.py\n",
+                       "pip install awscli\n",
+                       "wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+                       "gunzip aws-cfn-bootstrap-latest.tar.gz\n",
+                       "tar -xvf aws-cfn-bootstrap-latest.tar\n",
+                       "cd aws-cfn-bootstrap*\n",
+                       "python setup.py build\n",
+                       "python setup.py install\n",
+		                   "yum install -y zip\n",
+	            	       "yum install -y unzip\n",
+                       "/usr/bin/cfn-init -v ",
+                       "         --stack ", { "Ref" : "AWS::StackName" },
+                       "         --resource STDBYInstance ",
+                       "         --region ", { "Ref" : "AWS::Region" }, "\n",
+                       "cp /etc/sysctl.conf /etc/sysctl.conf_backup\n",
+                       "cat /etc/sysctl.conf | grep -v shmall | grep -v shmmax >/etc/sysctl.conf_txt\n",
+                       "mv -f /etc/sysctl.conf_txt /etc/sysctl.conf\n",
+                       "echo '#input parameters from Cloudformation' >>/etc/sysctl.conf\n",
+                       "echo 'fs.file-max = 6815744' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.sem = 250 32000 100 128' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmmni = 4096' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmall = 1073741824' >>/etc/sysctl.conf\n",
+                       "echo 'kernel.shmmax = ", { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "InstanceType" }, "shmax"]},"' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.rmem_default = 262144' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.rmem_max = 4194304' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.wmem_default = 262144' >>/etc/sysctl.conf\n",
+                       "echo 'net.core.wmem_max = 1048576' >>/etc/sysctl.conf\n",
+                       "echo 'fs.aio-max-nr = 1048576' >>/etc/sysctl.conf\n",
+                       "echo 'net.ipv4.ip_local_port_range = 9000 65500' >>/etc/sysctl.conf\n",
+                       "/sbin/sysctl -p\n",
+                       "cp /etc/security/limits.conf /etc/security/limits.conf_backup\n",
+                       "cat /etc/security/limits.conf | grep -v End >/etc/security/limits.conf_txt\n",
+                       "mv -f /etc/security/limits.conf_txt /etc/security/limits.conf\n",
+                       "echo '#input parameters from Cloudformation' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   nofile    1024' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   nofile    65536' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   nproc    16384' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   nproc    16384' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   soft   stack    10240' >>/etc/security/limits.conf\n",
+                       "echo 'oracle   hard   stack    32768' >>/etc/security/limits.conf\n",
+                       "echo '# End of file' >>/etc/security/limits.conf\n",
+                       "groupadd -g 54321 oinstall\n",
+                       "groupadd -g 54322 dba\n",
+                       "groupadd -g 54323 oper\n",
+                       "useradd -u 54321 -g oinstall -G dba,oper oracle\n",
+                       "mkdir /u01\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdb\n",
+                       "mkfs -t ext4 /dev/xvdb1\n",
+                       "echo '/dev/xvdb1 /u01   ext4    defaults,noatime  1   1'>>/etc/fstab\n",
+                       "mount /u01\n",
+                       "mkdir -p /u01/app/oracle/product/12.1.0.2/db_1\n",
+                       "mkdir -p /u01/app/oracle/product/12.1.0.2/grid\n",
+                       "mkdir -p /u01/install\n",
+                       "mv /tmp/*.rsp /u01/install/.\n",
+                       "/tmp/orcl-download-s3.sh\n",
+                       "cd /u01/install\n",
+                       "unzip linuxamd64_12102_database_1of2.zip\n",
+                       "unzip linuxamd64_12102_database_2of2.zip\n",
+                       "unzip linuxamd64_12102_grid_1of2.zip\n",
+                       "unzip linuxamd64_12102_grid_2of2.zip\n",
+                       "cd /u01/install\n",
+                       "yum install -y kmod-oracleasm\n",
+                       "rpm -Uvh oracleasm-support-2.1.8-1.el6.x86_64.rpm\n",
+                       "rpm -Uvh oracleasmlib-2.0.4-1.el6.x86_64.rpm\n",
+                       "chown -R oracle:oinstall /u01\n",
+                       "chmod -R 775 /u01\n",
+                       "oracleasm configure -u oracle -g dba -b -s y -e\n",
+                       "oracleasm init\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdc\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdd\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvde\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdf\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdg\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdh\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdi\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdj\n",
+                       "echo -e 'o\nn\np\n1\n\n\nw' | fdisk /dev/xvdk\n",
+                       "oracleasm createdisk RECO1 /dev/xvdc1\n",
+                       "oracleasm createdisk RECO2 /dev/xvdd1\n",
+                       "oracleasm createdisk RECO3 /dev/xvde1\n",
+                       "oracleasm createdisk DATA1 /dev/xvdf1\n",
+                       "oracleasm createdisk DATA2 /dev/xvdg1\n",
+                       "oracleasm createdisk DATA3 /dev/xvdh1\n",
+                       "oracleasm createdisk DATA4 /dev/xvdi1\n",
+                       "oracleasm createdisk DATA5 /dev/xvdj1\n",
+                       "oracleasm createdisk DATA6 /dev/xvdk1\n",
+                       "oracleasm init\n",
+                       "yum install -y xorg-x11-xauth.x86_64 xorg-x11-server-utils.x86_64 dbus-x11.x86_64\n",
+                       "yum install binutils -y\n",
+                       "yum install compat-libcap1 -y\n",
+                       "yum install gcc -y\n",
+                       "yum install gcc-c++ -y\n",
+                       "yum install glibc -y\n",
+                       "yum install glibc.i686 -y\n",
+                       "yum install glibc-devel -y\n",
+                       "yum install glibc-devel.i686 -y\n",
+                       "yum install ksh -y\n",
+                       "yum install libgcc -y\n",
+                       "yum install libgcc.i686 -y\n",
+                       "yum install libstdc++ -y\n",
+                       "yum install libstdc++.i686 -y\n",
+                       "yum install libstdc++-devel -y\n",
+                       "yum install libstdc++-devel.i686 -y\n",
+                       "yum install libaio -y\n",
+                       "yum install libaio.i686 -y\n",
+                       "yum install libaio-devel -y\n",
+                       "yum install libaio-devel.i686 -y\n",
+                       "yum install libXext -y\n",
+                       "yum install libXext.i686 -y\n",
+                       "yum install libXtst -y\n",
+                       "yum install libXtst.i686 -y\n",
+                       "yum install libX11 -y\n",
+                       "yum install libX11.i686 -y\n",
+                       "yum install libXau -y\n",
+                       "yum install libXau.i686 -y\n",
+                       "yum install libxcb -y\n",
+                       "yum install libxcb.i686 -y\n",
+                       "yum install libXi -y\n",
+                       "yum install libXi.i686 -y\n",
+                       "yum install make -y\n",
+                       "yum install sysstat -y\n",
+                       "yum install unixODBC -y\n",
+                       "yum install unixODBC-devel -y\n",
+                       "sed -i -- 's/4096/16384/g' /etc/security/limits.d/20-nproc.conf\n",
+                       "sed -i -- 's/SELINUX=enforcing/SELINUX=permissive/g' /etc/selinux/config\n",
+                       "setenforce Permissive\n",
+                       "echo 'export TMP=/tmp' >>/home/oracle/.bash_profile\n",
+                       "echo 'export TMPDIR=/tmp' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_BASE=/u01/app/oracle' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/db_1' >>/home/oracle/.bash_profile\n",
+                       "echo 'export ORACLE_SID=",{ "Ref" : "StandbyName" }, "' >>/home/oracle/.bash_profile\n",
+                       "echo 'export PATH=/usr/sbin:$PATH' >>/home/oracle/.bash_profile\n",
+                       "echo 'export PATH=/u01/app/oracle/product/12.1.0.2/db_1/bin:$PATH' >>/home/oracle/.bash_profile\n",
+                       "echo 'export LD_LIBRARY_PATH=/u01/app/oracle/product/12.1.0.2/db_1/lib:/lib:/usr/lib' >>/home/oracle/.bash_profile\n",
+                       "echo 'export CLASSPATH=/u01/app/oracle/product/12.1.0.2/db_1/jlib:/u01/app/oracle/product/12.1.0.2/db_1/rdbms/jlib' >>/home/oracle/.bash_profile\n",
+                       "mkswap /dev/xvdx \n",
+                       "swapon /dev/xvdx \n",
+                       "echo '/dev/xvdx    swap      swap    defaults       0 0'>>/etc/fstab\n",
+                       "yum-config-manager --enable rhui-REGION-rhel-server-extras rhui-REGION-rhel-server-optional\n",
+                       "yum install -y compat-libstdc++-33\n",
+                       "yum install -y nfs-utils\n",
+                       "mkdir -p /home/oracle/.ssh\n",
+                       "cp /home/ec2-user/.ssh/authorized_keys /home/oracle/.ssh/.\n",
+                       "chown oracle:dba /home/oracle/.ssh /home/oracle/.ssh/authorized_keys\n",
+                       "chmod 600 /home/oracle/.ssh/authorized_keys\n",
+                       "echo 'oracle ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers\n",
+                       "sed -i -- 's/requiretty/!requiretty/g' /etc/sudoers\n",
+                       "sudo su -l oracle -c /tmp/oracleexec.sh\n",
+                       "sed -i -- 's/!requiretty/requiretty/g' /etc/sudoers\n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /u01/install/*.rsp \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /tmp/*.sh \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /var/log/cloud-init.log \n",
+                       "sed -i -- 's/", { "Ref" : "DatabasePass" }, "/xxxxx/g' /var/lib/cloud/instance/obj.pkl /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instance/vendor-data.txt \n",
+                       "aws s3 rm s3://hhug-cf/config/ --recursive \n",
+                       "/usr/bin/cfn-signal -e $? ",
+                       "         --stack ", { "Ref" : "AWS::StackName" },
+                       "         --resource STDBYInstance ",
+                       "         --region ", { "Ref" : "AWS::Region" }, "\n"
+        ]]}},
+        "Tags"     : [ {"Key" : "Name", "Value" : { "Ref" : "StandbyName" } }  ]
+      },
+      "CreationPolicy" : {
+       "ResourceSignal" : {
+         "Timeout" : "PT60M"
+       }
+     }
+    },
+
+    "EthS" : {
+      "Type" : "AWS::EC2::NetworkInterface",
+      "Properties" : {
+        "Description"        : "eth0",
+        "GroupSet"           : [ { "Ref" : "SSHSecurityGroup" } ],
+        "PrivateIpAddresses" : [
+          { "PrivateIpAddress" : { "Ref" : "STANDBYIPAddress" }, "Primary" : "true" }
+        ],
+        "SourceDestCheck"    : "true",
+        "SubnetId"           : { "Ref" : "StandbySubnetId" },
+        "Tags"               : [ {"Key" : "Name", "Value" : "Interface 0"}, {"Key" : "Interface", "Value" : "eth0"} ]
+      }
+    }
+
+
+
+
+
+
+
+  },
+
+
+
+
+
+
+
+
+
+
+  "Outputs" : {
+    "DNS" : {
+      "Value" : {"Fn::Join":["",[{ "Ref": "DatabaseName" },".",{"Ref":"AWS::StackName"}]]},
+      "Description" : "Private DNS to access your Database instance inside your VPC"
+    },
+    "PrimaryInstanceId" : {
+      "Value" : { "Ref" : "EC2Instance" },
+      "Description" : "Instance Id of newly created Oracle instance"
+    },
+    "VpcId" : {
+      "Value" : { "Ref" : "VpcId" },
+      "Description" : "VPC ID"
+    },
+    "PrimaryPrivateIPAddress" : {
+      "Value" : { "Fn::Join" : [" ", [ "IP address", { "Fn::GetAtt" : ["Eth0", "PrimaryPrivateIpAddress"] }, "on subnet", {"Ref" : "SubnetId"}]]},
+      "Description" : "Primary Instance private IP address"
+    },
+    "StandbyPrivateIPAddresses" : {
+      "Value" : { "Fn::Join" : [" ", [ "IP address",  { "Fn::GetAtt" : ["EthS", "PrimaryPrivateIpAddress"] }, "on subnet", {"Ref" : "StandbySubnetId"}]]},
+      "Description" : "Standby Instance private IP address"
+    },
+    "DatabaseName" : {
+      "Value" : { "Ref": "DatabaseName" },
+      "Description" : "Database Name"
+    },
+    "StandbyInstance" : {
+      "Value" : { "Ref":"StandbyName" },
+      "Description" : "Standby Name"
+    },
+    "InstanceType" : {
+      "Value" : { "Ref":"InstanceType" },
+      "Description" : "Instance Type"
+    },
+    "KeyPair" : {
+      "Value" : { "Ref":"KeyName" },
+      "Description" : "Key pair for the instances"
+    },
+    "NetworkAccess" : {
+      "Value" : { "Ref":"SSHLocation" },
+      "Description" : "Network 22, 1521 and 5500 Ports to this IP CIDR"
+    },
+    "SecurityGroup" : {
+      "Value" : { "Fn::Join" : [" ", [ "SecurityGroup", { "Fn::GetAtt" : ["SSHSecurityGroup", "GroupId"] }, "on subnet" ]]},
+      "Description" : "Security Group ID"
+    }
+  }
+}
